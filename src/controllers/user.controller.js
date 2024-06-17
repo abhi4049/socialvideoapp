@@ -159,8 +159,8 @@ const logoutUser = asyncHandler(async (req, res) => {
     await User.findByIdAndUpdate(
         req.user._id,
         {
-            $set: {
-                refreshToken: undefined
+            $unset: {
+                refreshToken: 1
             }
         },
         {
@@ -182,7 +182,7 @@ const logoutUser = asyncHandler(async (req, res) => {
 
 const refreshAccessToken = asyncHandler(async (req, res) => {
     const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken
-    if (incomingRefreshToken) {
+    if (!incomingRefreshToken) {
         throw new apiError(401, "unauthorized request!")
     }
 
@@ -190,11 +190,11 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
         const decodedToken = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET)
 
         const user = await User.findById(decodedToken._id)
-        if (user) {
+        if (!user) {
             throw new apiError(401, "Invalid refresh token!")
         }
 
-        if (!incomingRefreshToken !== user?.refreshToken) {
+        if (incomingRefreshToken !== user?.refreshToken) {
             throw new apiError(401, "refresh token expired or already used!")
         }
 
@@ -223,8 +223,8 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
 const changeCurrentPassword = asyncHandler(async (req, res) => {
     const { oldPassword, newPassword } = req.body
     const user = await User.findById(req.user?._id)
-    const isPasswordCorrect = await user.isPasswordCorrect(oldPassword)
-    if (!isPasswordCorrect) {
+    const isPasswordValid = await user.isPasswordCorrect(oldPassword)
+    if (!isPasswordValid) {
         throw new apiError(400, "Old password does not match!")
     }
 
@@ -239,7 +239,11 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
 const getCurrentUser = asyncHandler(async (req, res) => {
     return res
         .status(200)
-        .json(new apiResponse(200, req.user, "Current user fetched successfully!"))
+        .json(new apiResponse(
+            200,
+            req.user,
+            "User fetched successfully"
+        ))
 })
 
 const updateAccountDetails = asyncHandler(async (req, res) => {
@@ -318,7 +322,7 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
         )
 })
 
-const getUserChannelProfie = asyncHandler(async (req, res) => {
+const getUserChannelProfile = asyncHandler(async (req, res) => {
     const { username } = req.params
     if (!username?.trim()) {
         throw new apiError(400, "Username is missing!")
@@ -355,8 +359,8 @@ const getUserChannelProfie = asyncHandler(async (req, res) => {
                     $size: "$subscribedTo"
                 },
                 isSubscribed: {
-                    $condition: {
-                        if: {$in: [req.user?._id, "$subscribers.subscriber"]},
+                    $cond: {
+                        if: { $in: [req.user?._id, "$subscribers.subscriber"] },
                         then: true,
                         else: false
                     }
@@ -377,21 +381,23 @@ const getUserChannelProfie = asyncHandler(async (req, res) => {
         }
     ])
 
-    if(!channel?.length) {
+    if (!channel?.length) {
         throw new apiError(400, "Channel does not exists!")
     }
 
     return res
-    .status(200)
-    .json(new apiResponse(200, channel[0], "User channel faetched successfully"))
+        .status(200)
+        .json(new apiResponse(200, channel[0], "User channel faetched successfully"))
 })
 
 const getWatchHistory = asyncHandler(async (req, res) => {
-    const userId = await User.aggregate([
+    const user = await User.aggregate([
         {
             $match: {
                 _id: new mongoose.Types.ObjectId(req.user._id)
-            },
+            }
+        },
+        {
             $lookup: {
                 from: "videos",
                 localField: "watchHistory",
@@ -428,12 +434,12 @@ const getWatchHistory = asyncHandler(async (req, res) => {
     ])
 
     return res
-    .status(200)
-    .json( new apiResponse(
-        200,
-        user[0].watchHistory,
-        "Watch history fetched successfully!"
-    ))
+        .status(200)
+        .json(new apiResponse(
+            200,
+            user[0].watchHistory,
+            "Watch history fetched successfully!"
+        ))
 })
 
-export { registerUser, loginUser, logoutUser, refreshAccessToken, changeCurrentPassword, getCurrentUser, updateAccountDetails, updateUserAvatar, updateUserCoverImage, getUserChannelProfie, getWatchHistory }
+export { registerUser, loginUser, logoutUser, refreshAccessToken, changeCurrentPassword, getCurrentUser, updateAccountDetails, updateUserAvatar, updateUserCoverImage, getUserChannelProfile, getWatchHistory }
